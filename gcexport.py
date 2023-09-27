@@ -35,7 +35,6 @@ import unicodedata
 import urllib.request
 import zipfile
 from datetime import datetime, timedelta, tzinfo
-from getpass import getpass
 from math import floor
 from platform import python_version
 from subprocess import call
@@ -131,7 +130,6 @@ DATA = {
 }
 
 # URLs for various services.
-
 URL_GC_LOGIN = 'https://sso.garmin.com/sso/signin?' + urlencode(DATA)
 URL_GC_POST_AUTH = 'https://connect.garmin.com/modern/activities?'
 URL_GC_PROFILE = 'https://connect.garmin.com/modern/profile'
@@ -469,10 +467,8 @@ def parse_arguments(argv):
         help='print version and exit')
     parser.add_argument('-v', '--verbosity', action='count', default=0,
         help='increase output and log verbosity, save more intermediate files')
-    parser.add_argument('--username',
-        help='your Garmin Connect username or email address (otherwise, you will be prompted)')
-    parser.add_argument('--password',
-        help='your Garmin Connect password (otherwise, you will be prompted)')
+    parser.add_argument('--session',
+        help='your Garmin Connect SESSIONID cookie value (login to https://connect.garmin.com/ and copy the value)')
     parser.add_argument('-c', '--count', default='1',
         help='number of recent activities to download, or \'all\' (default: 1)')
     parser.add_argument('-e', '--external',
@@ -510,54 +506,9 @@ def login_to_garmin_connect(args):
     """
     Perform all HTTP requests to login to Garmin Connect.
     """
-    username = args.username if args.username else input('Username: ')
-    password = args.password if args.password else getpass()
-
-    logging.debug("Login params: %s", urlencode(DATA))
-
-    # Initially, we need to get a valid session cookie, so we pull the login page.
-    print('Connecting to Garmin Connect...', end='')
-    logging.info('Connecting to %s', URL_GC_LOGIN)
-    connect_response = http_req_as_string(URL_GC_LOGIN)
-    if args.verbosity > 0:
-        write_to_file(os.path.join(args.directory, 'connect_response.html'), connect_response, 'w')
-    for cookie in COOKIE_JAR:
-        logging.debug("Cookie %s : %s", cookie.name, cookie.value)
-    print(' Done.')
-
-    # Now we'll actually login.
-    # Fields that are passed in a typical Garmin login.
-    post_data = {
-        'username': username,
-        'password': password,
-        'embed': 'false',
-        'rememberme': 'on',
-    }
-
-    headers = {'referer': URL_GC_LOGIN}
-
-    print('Requesting Login ticket...', end='')
-    logging.info('Requesting Login ticket')
-    login_response = http_req_as_string(f'{URL_GC_LOGIN}#', post_data, headers)
-
-    for cookie in COOKIE_JAR:
-        logging.debug("Cookie %s : %s", cookie.name, cookie.value)
-    if args.verbosity > 0:
-        write_to_file(os.path.join(args.directory, 'login_response.html'), login_response, 'w')
-
-    # extract the ticket from the login response
-    pattern = re.compile(r".*\?ticket=([-\w]+)\";.*", re.MULTILINE | re.DOTALL)
-    match = pattern.match(login_response)
-    if not match:
-        raise GarminException(
-            'Couldn\'t find ticket in the login response. Cannot log in. Did you enter the correct username and password?'
-        )
-    login_ticket = match.group(1)
-    print(' Done. Ticket=', login_ticket, sep='')
-
-    print("Authenticating...", end='')
-    logging.info('Authentication URL %s', f'{URL_GC_POST_AUTH}ticket={login_ticket}')
-    http_req(f'{URL_GC_POST_AUTH}ticket={login_ticket}')
+    session = args.session if args.session else input('SESSIONID cookie: ')
+    print('Setting session cookie...', end=' ')
+    COOKIE_JAR.set_cookie(http.cookiejar.Cookie(version=0, name='SESSIONID', value=session, port=None, port_specified=False, domain='connect.garmin.com', domain_specified=False, domain_initial_dot=False, path='/', path_specified=True, secure=False, expires=None, discard=True, comment=None, comment_url=None, rest={'HttpOnly': None}, rfc2109=False))
     print(' Done.')
 
 
